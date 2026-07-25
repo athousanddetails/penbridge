@@ -43,7 +43,9 @@ struct LibraryBrowser: View {
                 }
                 .listStyle(.sidebar)
             }
-            .frame(minWidth: 200, idealWidth: 240)
+            // HSplitView splits evenly unless a pane is given a hard ceiling, so the
+            // playlist pane is capped and the table takes everything else.
+            .frame(minWidth: 170, idealWidth: 210, maxWidth: 280)
 
             VStack(spacing: 0) {
                 HStack {
@@ -69,22 +71,22 @@ struct LibraryBrowser: View {
                         }
                         .padding(.vertical, 1)
                     }
-                    .width(min: 300, ideal: 440)
+                    .width(min: 260, ideal: 380)
 
                     TableColumn("Artist") { t in
                         Text(model.displayArtist(t)).font(.system(size: 13)).lineLimit(1)
                     }
-                    .width(min: 140, ideal: 210)
+                    .width(min: 120, ideal: 170)
 
                     TableColumn("Album") { t in
                         Text(model.displayAlbum(t)).font(.system(size: 13)).lineLimit(1)
                     }
-                    .width(min: 140, ideal: 230)
+                    .width(min: 120, ideal: 180)
 
                     TableColumn("Genre") { t in
                         Text(model.displayGenre(t)).font(.system(size: 13)).lineLimit(1)
                     }
-                    .width(min: 90, ideal: 140)
+                    .width(min: 80, ideal: 110)
 
                     TableColumn("BPM") { t in
                         Text(t.tempo > 0 ? String(format: "%.2f", Double(t.tempo) / 100) : "—")
@@ -104,7 +106,7 @@ struct LibraryBrowser: View {
                     .width(56)
                 }
             }
-            .frame(minWidth: 480)
+            .frame(minWidth: 620, maxWidth: .infinity)
         }
     }
 }
@@ -144,9 +146,10 @@ struct BuildPane: View {
                             ForEach(EngineSchema.allCases) { s in Text(s.label).tag(s) }
                         }
                         Text("""
-                             Pick 2.21.0 unless you know the player runs Engine OS 4.3 or newer. \
-                             Older Engine OS cannot read a 3.0.1 database; Engine OS 4.x and 5.x \
-                             read both.
+                             3.0.2 is what Engine OS 5.x writes natively — use it unless the \
+                             player is older. A newer schema cannot be read by older firmware, \
+                             so drop to 2.21.0 if you need one pen to work on everything from \
+                             Engine OS 3.1 upwards.
                              """)
                         .font(.caption).foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
