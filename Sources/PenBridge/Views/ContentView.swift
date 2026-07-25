@@ -11,7 +11,7 @@ struct PenBridgeApp: App {
             ContentView()
                 .environmentObject(model)
                 .frame(minWidth: 1200, minHeight: 700)
-                .onAppear { model.refreshDrives() }
+                .onAppear { model.startWatchingVolumes() }
         }
         .defaultSize(width: 1640, height: 950)
     }
@@ -29,7 +29,7 @@ struct ContentView: View {
             if model.selected == nil {
                 ContentUnavailableView("Select a drive",
                                        systemImage: "externaldrive",
-                                       description: Text("Plug in your USB pen and pick it on the left."))
+                                       description: Text("Plug in a USB pen — it will be detected and opened automatically."))
             } else {
                 VStack(spacing: 0) {
                     Picker("", selection: $tab) {
@@ -94,6 +94,19 @@ struct DriveList: View {
             }
         }
         .listStyle(.sidebar)
+        .safeAreaInset(edge: .bottom) {
+            VStack(spacing: 2) {
+                Divider()
+                Text("PenBridge")
+                    .font(.caption).bold()
+                Link("by A Thousand Details",
+                     destination: URL(string: "https://github.com/athousanddetails")!)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.bottom, 8)
+            .frame(maxWidth: .infinity)
+        }
         .toolbar {
             ToolbarItem {
                 Button { model.refreshDrives() } label: { Image(systemName: "arrow.clockwise") }

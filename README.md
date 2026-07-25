@@ -1,11 +1,17 @@
 # PenBridge
 
+**by [A Thousand Details](https://github.com/athousanddetails)**
+
 A small native macOS app (SwiftUI, Apple Silicon) that adds a **Denon Engine
 Library** to a USB drive that already holds a **rekordbox export**, *reusing the
 audio that is already on the drive*. No tracks are copied, and the rekordbox
 side is never modified.
 
 The result is one pen that works in both a Pioneer CDJ/XDJ and a Denon Prime.
+
+Plug a drive in and it is detected, opened and analysed automatically — there is a
+built-in library browser for checking what is on a pen before writing anything, and
+an eject button for swapping pens quickly.
 
 ```
 /  (USB drive)
@@ -98,7 +104,19 @@ PenBridge.app/Contents/MacOS/PenBridge --headless /Volumes/YOURPEN --dry-run
 PenBridge.app/Contents/MacOS/PenBridge --headless /Volumes/YOURPEN [--schema 3]
 ```
 
-## Format references
+## Credits
 
-* Pioneer PDB / ANLZ: Deep Symmetry `crate-digger` Kaitai specs.
-* Engine schema and blob layouts: `xsco/libdjinterop`.
+Made by **A Thousand Details**. MIT licensed — fork it, ship it, just keep the notice.
+
+Built on the reverse-engineering work of two projects, without which none of this
+would be possible:
+
+* [Deep-Symmetry/crate-digger](https://github.com/Deep-Symmetry/crate-digger) —
+  Kaitai specs for the Pioneer PDB and ANLZ formats.
+* [xsco/libdjinterop](https://github.com/xsco/libdjinterop) — the Engine schema
+  and performance-blob layouts, plus reference databases captured from real
+  Engine OS firmware.
+
+PenBridge is not affiliated with, endorsed by, or supported by Pioneer DJ,
+AlphaTheta, Denon DJ or inMusic. rekordbox and Engine DJ are trademarks of their
+respective owners.

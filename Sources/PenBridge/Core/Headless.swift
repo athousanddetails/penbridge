@@ -10,6 +10,32 @@ enum Headless {
 
     static func runIfRequested() {
         let args = CommandLine.arguments
+
+        // `--watch` exercises the same auto-detection the GUI uses, so drive
+        // detection can be verified without a window.
+        if args.contains("--watch") {
+            setvbuf(stdout, nil, _IOLBF, 0)   // line-buffered so output survives redirection
+            MainActor.assumeIsolated {
+                let model = AppModel()
+                var previous = ""
+                model.startWatchingVolumes()
+                let printer = Timer(timeInterval: 0.5, repeats: true) { _ in
+                    MainActor.assumeIsolated {
+                        let now = model.drives
+                            .map { "\($0.name) [\($0.hasRekordbox ? "rekordbox" : "-")]" }
+                            .joined(separator: ", ")
+                        if now != previous {
+                            previous = now
+                            print("drives: \(now.isEmpty ? "(none)" : now)")
+                        }
+                    }
+                }
+                RunLoop.main.add(printer, forMode: .common)
+            }
+            RunLoop.main.run()
+            exit(0)
+        }
+
         guard let i = args.firstIndex(of: "--headless") else { return }
         guard i + 1 < args.count else {
             FileHandle.standardError.write(Data("usage: PenBridge --headless <volume>\n".utf8))

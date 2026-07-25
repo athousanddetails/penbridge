@@ -72,7 +72,55 @@ final class AppModel: ObservableObject {
 
     // MARK: - drives
 
-    func refreshDrives() {
+    private var volumeObservers: [NSObjectProtocol] = []
+    private var pollTimer: Timer?
+    private var lastVolumeSignature = ""
+
+    /// Watches for drives being plugged in, pulled out or renamed, so the list is
+    /// always live and the refresh button is only ever a manual override.
+    ///
+    /// NSWorkspace's mount notifications are not delivered reliably in every
+    /// process context, so a cheap poll backs them up rather than trusting them
+    /// as the only signal. Both paths funnel into the same refresh.
+    func startWatchingVolumes() {
+        guard volumeObservers.isEmpty else { return }
+
+        let centre = NSWorkspace.shared.notificationCenter
+        for name in [NSWorkspace.didMountNotification,
+                     NSWorkspace.didUnmountNotification,
+                     NSWorkspace.didRenameVolumeNotification] {
+            let token = centre.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.checkForVolumeChanges() }
+            }
+            volumeObservers.append(token)
+        }
+
+        let timer = Timer(timeInterval: 2.0, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.checkForVolumeChanges() }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        pollTimer = timer
+
+        lastVolumeSignature = Self.volumeSignature()
+        refreshDrives(autoSelect: true)
+    }
+
+    private static func volumeSignature() -> String {
+        let urls = FileManager.default.mountedVolumeURLs(
+            includingResourceValuesForKeys: [.volumeNameKey], options: [.skipHiddenVolumes]) ?? []
+        return urls.map(\.path).sorted().joined(separator: "|")
+    }
+
+    /// Refreshes only when the set of mounted volumes actually changed, so the
+    /// poll costs nothing and the UI never churns.
+    private func checkForVolumeChanges() {
+        let signature = Self.volumeSignature()
+        guard signature != lastVolumeSignature else { return }
+        lastVolumeSignature = signature
+        refreshDrives(autoSelect: true)
+    }
+
+    func refreshDrives(autoSelect: Bool = false) {
         let keys: [URLResourceKey] = [.volumeNameKey, .volumeIsRemovableKey,
                                       .volumeTotalCapacityKey, .volumeAvailableCapacityKey,
                                       .volumeLocalizedFormatDescriptionKey, .volumeIsInternalKey]
@@ -94,8 +142,21 @@ final class AppModel: ObservableObject {
                                isRemovable: removable))
         }
         drives = found.sorted { $0.name < $1.name }
+
+        // A drive that went away takes its scanned library with it.
         if let sel = selected, !drives.contains(where: { $0.id == sel.id }) {
-            selected = nil; contents = nil; scanState = .idle
+            selected = nil
+            contents = nil
+            playlistRows = []
+            audioMissing = []
+            lastResult = nil
+            scanState = .idle
+        }
+
+        // Nothing selected and a rekordbox pen just appeared? Open it.
+        if autoSelect, selected == nil, !isBuilding,
+           let pen = drives.first(where: { $0.hasRekordbox }) {
+            scan(pen)
         }
     }
 

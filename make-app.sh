@@ -14,13 +14,14 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 <dict>
     <key>CFBundleName</key><string>PenBridge</string>
     <key>CFBundleDisplayName</key><string>PenBridge</string>
-    <key>CFBundleIdentifier</key><string>local.penbridge</string>
+    <key>CFBundleIdentifier</key><string>com.athousanddetails.penbridge</string>
     <key>CFBundleExecutable</key><string>PenBridge</string>
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>CFBundleShortVersionString</key><string>1.0</string>
     <key>CFBundleVersion</key><string>1</string>
     <key>LSMinimumSystemVersion</key><string>14.0</string>
     <key>NSHighResolutionCapable</key><true/>
+    <key>NSHumanReadableCopyright</key><string>© 2026 A Thousand Details</string>
     <key>NSSupportsAutomaticTermination</key><true/>
 </dict>
 </plist>
