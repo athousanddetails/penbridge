@@ -51,6 +51,13 @@ struct ContentView: View {
                 }
             }
         }
+        .alert("Eject failed",
+               isPresented: Binding(get: { model.ejectError != nil },
+                                    set: { if !$0 { model.ejectError = nil } })) {
+            Button("OK", role: .cancel) { model.ejectError = nil }
+        } message: {
+            Text(model.ejectError ?? "")
+        }
     }
 }
 
@@ -79,6 +86,10 @@ struct DriveList: View {
                     }
                     .padding(.vertical, 3)
                     .tag(d.id)
+                    .contextMenu {
+                        Button("Eject \(d.name)") { model.eject(d) }
+                            .disabled(model.isBuilding)
+                    }
                 }
             }
         }
@@ -87,6 +98,15 @@ struct DriveList: View {
             ToolbarItem {
                 Button { model.refreshDrives() } label: { Image(systemName: "arrow.clockwise") }
                     .help("Rescan drives")
+            }
+            ToolbarItem {
+                Button {
+                    if let d = model.selected { model.eject(d) }
+                } label: {
+                    Image(systemName: "eject.fill")
+                }
+                .help(model.selected.map { "Eject \($0.name)" } ?? "Eject the selected drive")
+                .disabled(model.selected == nil || model.isBuilding)
             }
         }
     }

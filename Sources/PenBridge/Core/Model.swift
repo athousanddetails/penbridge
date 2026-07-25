@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import SwiftUI
 
@@ -67,6 +68,7 @@ final class AppModel: ObservableObject {
     @Published var buildFraction = 0.0
     @Published var lastResult: WriteResult?
     @Published var errorMessage: String?
+    @Published var ejectError: String?
 
     // MARK: - drives
 
@@ -220,6 +222,35 @@ final class AppModel: ObservableObject {
                     self.buildStage = ""
                 }
             }
+        }
+    }
+
+    // MARK: - eject
+
+    /// Unmounts and ejects a drive so another pen can be swapped in.
+    /// Refuses while a build is in flight, since that would pull the volume out
+    /// from under an in-progress write.
+    func eject(_ drive: Drive) {
+        guard !isBuilding else {
+            ejectError = "A build is still running — wait for it to finish before ejecting."
+            return
+        }
+        // Drop our reference to the scanned library first so nothing keeps the
+        // volume busy.
+        if selected?.id == drive.id {
+            selected = nil
+            contents = nil
+            playlistRows = []
+            audioMissing = []
+            lastResult = nil
+            scanState = .idle
+        }
+        do {
+            try NSWorkspace.shared.unmountAndEjectDevice(at: drive.url)
+            refreshDrives()
+        } catch {
+            ejectError = "Could not eject “\(drive.name)”: \(error.localizedDescription)"
+            refreshDrives()
         }
     }
 
