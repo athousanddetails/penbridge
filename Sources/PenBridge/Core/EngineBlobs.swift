@@ -194,15 +194,29 @@ enum EngineBlobs {
         return m
     }()
 
+    /// Open Key notation: 1m…12m minor, 1d…12d major. It is the Camelot wheel
+    /// rotated by seven, so 1d ↔ 8B (C major) and 1m ↔ 8A (A minor).
+    private static func openKeyToCamelot(_ s: String) -> String? {
+        let lower = s.lowercased()
+        guard let last = lower.last, last == "m" || last == "d",
+              let n = Int(lower.dropLast()), (1...12).contains(n) else { return nil }
+        return "\((n + 6) % 12 + 1)\(last == "d" ? "B" : "A")"
+    }
+
     /// Best-effort conversion of a rekordbox key label to an Engine key index.
+    /// rekordbox libraries routinely mix classical ("Amin"), Camelot ("4A") and
+    /// Open Key ("1m") spellings, sometimes within the same collection.
     /// Returns nil when the label is absent or unrecognised, in which case the
     /// key column is left NULL rather than guessed.
     static func engineKey(from rekordboxKey: String) -> Int32? {
         var s = rekordboxKey.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !s.isEmpty else { return nil }
 
+        // Tolerate zero-padded Camelot ("08A" as well as "8A").
         let upper = s.uppercased()
-        if let c = camelotToEngine[upper] { return c }
+        let unpadded = upper.first == "0" ? String(upper.drop(while: { $0 == "0" })) : upper
+        if let c = camelotToEngine[unpadded] { return c }
+        if let camelot = openKeyToCamelot(s), let c = camelotToEngine[camelot] { return c }
 
         s = s.replacingOccurrences(of: "♯", with: "#")
              .replacingOccurrences(of: "♭", with: "b")

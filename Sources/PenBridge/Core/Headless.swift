@@ -61,6 +61,18 @@ enum Headless {
             print("  playlist entries:\(contents.playlistEntries.values.reduce(0) { $0 + $1.count })")
             print("  artists/albums:  \(contents.artists.count)/\(contents.albums.count)")
 
+            // Key labels come in classical, Camelot and Open Key spellings, often
+            // mixed in one library, so report how many actually resolve.
+            var named = 0, mapped = 0
+            var unmapped = Set<String>()
+            for t in contents.tracks {
+                guard let name = contents.keys[t.keyID], !name.isEmpty else { continue }
+                named += 1
+                if EngineBlobs.engineKey(from: name) != nil { mapped += 1 } else { unmapped.insert(name) }
+            }
+            print("  keys recognised: \(mapped)/\(named)"
+                  + (unmapped.isEmpty ? "" : "  unrecognised: \(unmapped.sorted().joined(separator: ", "))"))
+
             if dryRun {
                 print("dry run — nothing written")
                 exit(0)
