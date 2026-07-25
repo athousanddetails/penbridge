@@ -15,6 +15,9 @@ enum EngineSchema: String, CaseIterable, Identifiable {
     /// Schema 3.x moved the performance blobs out of Track into a PerformanceData table.
     var isV3: Bool { version.major >= 3 }
 
+    /// Track.albumArtSourceHash only exists from schema 3.0.2 (Engine OS 5.x).
+    var hasAlbumArtSourceHash: Bool { self == .v3_0_2 }
+
     var label: String {
         switch self {
         case .v2_21_0: return "2.21.0  —  Engine OS 3.1–3.4 (legacy, still accepted by 4.x/5.x)"

@@ -8,6 +8,7 @@ struct WriteOptions {
     var includeBeatgrids = true
     var includeCues = true
     var includeWaveforms = true
+    var includeAlbumArt = true
     var playlistPrefix = ""      // optional prefix so Engine playlists are identifiable
 }
 
@@ -24,6 +25,7 @@ struct WriteResult {
     var cues: Int
     var loops: Int
     var waveforms: Int
+    var albumArt: Int
     var missingAudio: [String]
     var databaseBytes: Int64
 }
@@ -97,6 +99,11 @@ final class EngineWriter {
         try exec(db, "PRAGMA foreign_keys=OFF;")
         try exec(db, options.schema.ddl)
 
+        // Schema 2.x ships an empty AlbumArt row at id 1 meaning "no artwork";
+        // schema 3.x does not, which would otherwise let the first real cover
+        // take id 1 and be shown for every track without art.
+        try exec(db, "INSERT OR IGNORE INTO AlbumArt (id, hash, albumArt) VALUES (1, NULL, NULL);")
+
         let v = options.schema.version
         try exec(db, """
             INSERT INTO Information (id, uuid, schemaVersionMajor, schemaVersionMinor,
@@ -106,7 +113,7 @@ final class EngineWriter {
             """)
 
         var result = WriteResult(tracksWritten: 0, playlistsWritten: 0, entriesWritten: 0,
-                                 beatgrids: 0, cues: 0, loops: 0, waveforms: 0,
+                                 beatgrids: 0, cues: 0, loops: 0, waveforms: 0, albumArt: 0,
                                  missingAudio: [], databaseBytes: 0)
 
         try exec(db, "BEGIN;")
@@ -139,6 +146,8 @@ final class EngineWriter {
         let bytes = try Data(contentsOf: dbURL)
         try bytes.write(to: dest, options: .atomic)
 
+        tidy([dest, db2, engineLibraryURL])
+
         progress(WriteProgress(stage: "Done", fraction: 1.0))
         return result
     }
@@ -149,6 +158,46 @@ final class EngineWriter {
         if FileManager.default.fileExists(atPath: engineLibraryURL.path) {
             try FileManager.default.removeItem(at: engineLibraryURL)
         }
+        removeAppleDoubleCompanion(of: engineLibraryURL)
+    }
+
+    // MARK: - keeping FAT32 clean
+
+    /// macOS 14+ stamps every file an app creates with `com.apple.provenance`.
+    /// FAT32 cannot store extended attributes inline, so the OS materialises
+    /// them as AppleDouble "._" companions. Removing the attribute stops the
+    /// companion being recreated.
+    private func stripExtendedAttributes(at url: URL) {
+        let path = url.path
+        var size = listxattr(path, nil, 0, XATTR_NOFOLLOW)
+        guard size > 0 else { return }
+        var buffer = [CChar](repeating: 0, count: size)
+        size = listxattr(path, &buffer, size, XATTR_NOFOLLOW)
+        guard size > 0 else { return }
+
+        var names: [String] = []
+        var start = 0
+        for i in 0..<size where buffer[i] == 0 {
+            if i > start { names.append(String(cString: Array(buffer[start...i]))) }
+            start = i + 1
+        }
+        for name in names { _ = removexattr(path, name, XATTR_NOFOLLOW) }
+    }
+
+    /// Removes the "._" companion of a path this writer created. Deliberately
+    /// narrow: it only ever touches a sibling whose name is "._" + the exact
+    /// name of a file or folder we just wrote.
+    private func removeAppleDoubleCompanion(of url: URL) {
+        let companion = url.deletingLastPathComponent()
+            .appendingPathComponent("._" + url.lastPathComponent)
+        guard companion.lastPathComponent.hasPrefix("._"),
+              FileManager.default.fileExists(atPath: companion.path) else { return }
+        try? FileManager.default.removeItem(at: companion)
+    }
+
+    private func tidy(_ urls: [URL]) {
+        for url in urls { stripExtendedAttributes(at: url) }
+        for url in urls { removeAppleDoubleCompanion(of: url) }
     }
 
     // MARK: - tracks
@@ -174,11 +223,16 @@ final class EngineWriter {
             explicitLyrics
             """
         let commonValues = """
-            ?,?,?,?,?,?,?,?,1,?,?,?,?,?,?,?,?,?,?,?,NULL,NULL,0,?,?,?,?,1,
+            ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NULL,NULL,0,?,?,?,?,1,
             0,0,0,1,?,NULL,NULL,0,NULL,NULL,0,0
             """
+        // Only schema 3.0.2 carries albumArtSourceHash.
+        let wantsArtHash = options.schema.hasAlbumArtSourceHash
+        let artHashColumn = wantsArtHash ? ", albumArtSourceHash" : ""
+        let artHashValue = wantsArtHash ? ",?" : ""
+
         let sql = isV3
-            ? "INSERT INTO Track (\(commonColumns)) VALUES (\(commonValues))"
+            ? "INSERT INTO Track (\(commonColumns)\(artHashColumn)) VALUES (\(commonValues)\(artHashValue))"
             : """
               INSERT INTO Track (\(commonColumns), trackData, overviewWaveFormData,
                   beatData, quickCues, loops, thirdPartySourceId, activeOnLoadLoops)
@@ -190,6 +244,16 @@ final class EngineWriter {
             throw WriterError.sqlite(String(cString: sqlite3_errmsg(db)))
         }
         defer { sqlite3_finalize(stmt) }
+
+        // Covers are deduplicated by content hash, so a compilation shared by
+        // twenty tracks is stored once.
+        var artStmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, "INSERT INTO AlbumArt (hash, albumArt) VALUES (?, ?)",
+                                 -1, &artStmt, nil) == SQLITE_OK, let artStmt else {
+            throw WriterError.sqlite(String(cString: sqlite3_errmsg(db)))
+        }
+        defer { sqlite3_finalize(artStmt) }
+        var artCache: [String: Int64] = [:]
 
         var perfStmt: OpaquePointer?
         if isV3 {
@@ -236,6 +300,36 @@ final class EngineWriter {
                 ? ANLZReader.read(datURL: volume.appendingPathComponent(String(t.analyzePath.dropFirst())))
                 : ANLZData()
 
+            // Cover art: prefer the picture embedded in the audio file, fall back
+            // to rekordbox's 80x80 thumbnail. AlbumArt row 1 means "no artwork".
+            var artID: Int64 = 1
+            var artHash: String?
+            if options.includeAlbumArt {
+                let thumb = contents.artwork[t.artworkID].flatMap { path -> URL? in
+                    guard path.hasPrefix("/") else { return nil }
+                    return volume.appendingPathComponent(String(path.dropFirst()))
+                }
+                if let art = AlbumArt.artwork(audioFile: audioURL, fallbackThumbnail: thumb) {
+                    artHash = art.sha1
+                    if let cached = artCache[art.sha1] {
+                        artID = cached
+                    } else {
+                        sqlite3_bind_text(artStmt, 1, art.sha1, -1, SQLITE_TRANSIENT)
+                        _ = art.data.withUnsafeBytes {
+                            sqlite3_bind_blob(artStmt, 2, $0.baseAddress, Int32(art.data.count), SQLITE_TRANSIENT)
+                        }
+                        guard sqlite3_step(artStmt) == SQLITE_DONE else {
+                            throw WriterError.sqlite("storing album art: \(String(cString: sqlite3_errmsg(db)))")
+                        }
+                        artID = sqlite3_last_insert_rowid(db)
+                        artCache[art.sha1] = artID
+                        sqlite3_reset(artStmt)
+                        sqlite3_clear_bindings(artStmt)
+                    }
+                    result.albumArt += 1
+                }
+            }
+
             var col = Int32(1)
             func bindInt(_ v: Int64?) {
                 if let v { sqlite3_bind_int64(stmt, col, v) } else { sqlite3_bind_null(stmt, col) }
@@ -266,6 +360,7 @@ final class EngineWriter {
             bindText(t.fileName)                                            // filename
             bindInt(Int64(t.bitrate))                                       // bitrate
             bindDouble(bpm > 0 ? bpm : nil)                                 // bpmAnalyzed
+            bindInt(artID)                                                  // albumArtId
             bindInt(Int64(t.fileSize))                                      // fileBytes
             bindText(t.title)
             bindText(contents.artists[t.artistID])
@@ -317,6 +412,8 @@ final class EngineWriter {
                 quickBlob = EngineBlobs.quickCues([], mainCue: 0)
                 loopBlob = EngineBlobs.loops([])
             }
+
+            if wantsArtHash { bindText(artHash) }
 
             if !isV3 {
                 bindBlob(trackDataBlob)

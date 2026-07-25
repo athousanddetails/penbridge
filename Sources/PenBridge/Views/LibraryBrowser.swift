@@ -157,6 +157,7 @@ struct BuildPane: View {
                         Toggle("Beatgrids", isOn: $model.options.includeBeatgrids)
                         Toggle("Hot cues, loops and memory cues", isOn: $model.options.includeCues)
                         Toggle("Overview waveforms", isOn: $model.options.includeWaveforms)
+                        Toggle("Album art", isOn: $model.options.includeAlbumArt)
 
                         HStack {
                             Text("Playlist name prefix")
@@ -176,6 +177,7 @@ struct BuildPane: View {
                             GridRow { Text("Beatgrids").foregroundStyle(.secondary); Text("\(r.beatgrids)") }
                             GridRow { Text("Hot cues / loops").foregroundStyle(.secondary); Text("\(r.cues) / \(r.loops)") }
                             GridRow { Text("Waveforms").foregroundStyle(.secondary); Text("\(r.waveforms)") }
+                            GridRow { Text("Album art").foregroundStyle(.secondary); Text("\(r.albumArt)") }
                             GridRow { Text("Database size").foregroundStyle(.secondary); Text(formatBytes(r.databaseBytes)) }
                             GridRow { Text("Audio copied").foregroundStyle(.secondary)
                                       Text("none — existing files referenced").foregroundStyle(.green) }

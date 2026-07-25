@@ -92,6 +92,7 @@ enum Headless {
                   beatgrids  \(result.beatgrids)
                   cues/loops \(result.cues)/\(result.loops)
                   waveforms  \(result.waveforms)
+                  album art  \(result.albumArt)
                   db size    \(result.databaseBytes) bytes
                   missing    \(result.missingAudio.count)
                 """)

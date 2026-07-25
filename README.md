@@ -72,6 +72,7 @@ trigger on `Track`. The writer handles both.
 | beatgrid (`PQTZ`) | `beatData` (markers at tempo changes, bar-aligned to the first downbeat) |
 | hot cues / memory cues (`PCOB`/`PCO2`) | `quickCues` / `loops` |
 | preview waveform (`PWAV`) | `overviewWaveFormData` |
+| cover art (embedded in the file, else rekordbox's thumbnail) | `AlbumArt`, deduplicated by SHA-1 |
 | key name | `Track.key` (Engine's 0–23 index, Camelot and classical notation both handled) |
 
 Engine OS regenerates its own detailed scrolling waveform when a track loads, so
