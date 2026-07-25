@@ -1,0 +1,5 @@
+.build/
+.swiftpm/
+PenBridge.app/
+*.zip
+.DS_Store
